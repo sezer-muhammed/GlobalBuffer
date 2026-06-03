@@ -1,3 +1,4 @@
+import glob as _glob
 import os
 import subprocess
 import sys
@@ -10,7 +11,14 @@ import global_buffer as gb
 
 HELP = os.path.join(os.path.dirname(__file__), "_crossproc_helpers.py")
 SRC = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
-ENV = dict(os.environ, PYTHONPATH=SRC)
+# Only override PYTHONPATH when the extension is built in-place (local dev / ci.yml).
+# When running under cibuildwheel the wheel is installed into site-packages and
+# the source tree has no _core.so, so we must NOT shadow it.
+_ext_in_src = bool(
+    _glob.glob(os.path.join(SRC, "global_buffer", "_core*.so"))
+    or _glob.glob(os.path.join(SRC, "global_buffer", "_core*.pyd"))
+)
+ENV = dict(os.environ, PYTHONPATH=SRC) if _ext_in_src else dict(os.environ)
 
 
 def _spawn(fn, *args):

@@ -4,6 +4,21 @@ All notable changes to GlobalBuffer are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/);
 this project uses semantic versioning.
 
+## 1.0.2 — 2026-06-03
+
+### Fixed
+- **cibuildwheel test collection failure**: `tests/conftest.py` was prepending
+  the source `src/` tree to `sys.path`, shadowing the installed wheel inside
+  cibuildwheel's clean test venv (which has no `_core.so` in the source tree).
+  Removed the manual `sys.path.insert`; cibuildwheel installs the wheel before
+  running tests, so `import global_buffer` resolves from site-packages. Local
+  development continues to work via `pip install -e .` or `PYTHONPATH=src` with
+  the extension built in-place.
+- **cross-process subprocess `PYTHONPATH`**: `test_crossproc.py` was
+  unconditionally passing `PYTHONPATH=<src>` to child processes, which also
+  shadowed the installed wheel in cibuildwheel. It now only sets `PYTHONPATH`
+  when `_core.so/.pyd` is detected in the source tree (i.e. built in-place).
+
 ## 1.0.1 — 2026-06-03
 
 ### Fixed
