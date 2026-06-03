@@ -69,9 +69,22 @@ frame = r.next(timeout=1.0)     # consume in order; raises Empty/returns None on
 print(r.overruns)               # samples skipped because reader fell behind (next mode)
 print(r.writer_alive)           # heartbeat-based liveness
 
-# callback mode — background thread, 0-CPU blocking wake
+# --- Functional callback — background thread, 0-CPU blocking wake ---
 handle = r.on_data(lambda sample, seq: ..., mode="latest")  # or mode="next"
 handle.stop()
+
+# --- OO consumer: subclass, write only callback(self) ---
+class CsiConsumer(gb.Consumer):
+    def callback(self):              # no args, no return
+        # framework has set self.data (zero-copy view) and self.seq before the call
+        self.processed = heavy_process(self.data)   # store result on self
+
+ob = CsiConsumer.attach("csi", mode="latest")  # zero_copy=True default for arrays
+ob.start()                            # background thread; non-blocking to main
+...
+ob.processed                          # main thread reads the result later
+print(ob.dropped)                     # samples skipped (callback slower than arrival / staleness)
+ob.stop()
 
 # typed message reader (validation on read)
 rs = gb.attach("status", model=Status)   # schema_hash mismatch -> raises on attach
@@ -83,7 +96,9 @@ csi.unlink()     # owner removes the segment (explicit)
 ```
 
 **Naming:** `gb.create(...)` returns a writer/owner handle; `gb.attach(...)` returns
-a reader handle. Underlying classes `gb.GlobalBuffer` (writer) and `gb.Reader`.
+a reader handle. Underlying classes `gb.GlobalBuffer` (writer), `gb.Reader`, and
+`gb.Consumer` (subclassable reader). `gb.Consumer` *is* a `gb.Reader` that owns its
+own dispatch thread and calls `self.callback()` instead of taking a function.
 
 ## 4. Architecture
 

@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=64", "wheel", "Cython>=3.0", "numpy>=1.23"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "GlobalBuffer"
+dynamic = ["version"]
+description = "Cross-platform cross-process shared-memory ring buffer: zero-copy numpy arrays + pydantic messages, 0-CPU blocking callbacks."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.9"
+authors = [{ name = "Izzet Sezer" }]
+keywords = ["shared-memory", "ipc", "ring-buffer", "numpy", "pydantic", "zero-copy"]
+dependencies = ["numpy>=1.23", "msgspec>=0.18", "pydantic>=2"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7", "Cython>=3.0"]
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+packages = ["global_buffer"]
+
+[tool.setuptools.dynamic]
+version = { attr = "global_buffer._version.__version__" }
+
+[tool.cibuildwheel]
+build = "cp39-* cp310-* cp311-* cp312-* cp313-*"
+skip = "*-musllinux_i686 *_i686 pp*"
+test-requires = ["pytest", "numpy", "msgspec", "pydantic"]
+test-command = "pytest {project}/tests -m 'not crossproc_slow'"
+archs = ["auto64"]
+
+[tool.cibuildwheel.linux]
+archs = ["x86_64", "aarch64"]
+
+[tool.pytest.ini_options]
+markers = ["crossproc_slow: long cross-process stress tests"]

@@ -1,7 +1,11 @@
-*.pyc
-__pycache__/
+.venv/
 build/
 dist/
+wheelhouse/
 *.egg-info/
+src/global_buffer/_core.c
 *.so
-.venv/
+*.pyd
+__pycache__/
+.pytest_cache/
+.DS_Store
