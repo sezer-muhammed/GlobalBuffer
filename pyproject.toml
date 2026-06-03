@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=64", "wheel", "Cython>=3.0", "numpy>=1.23"]
+requires = ["setuptools>=68", "wheel", "Cython>=3.0", "numpy>=1.23"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,7 +7,7 @@ name = "global_buffer"
 dynamic = ["version"]
 description = "Cross-platform cross-process shared-memory ring buffer: zero-copy numpy arrays + pydantic messages, 0-CPU blocking callbacks."
 readme = "README.md"
-license = "MIT"
+license = {text = "MIT"}
 requires-python = ">=3.9"
 authors = [{ name = "Izzet Sezer" }]
 keywords = ["shared-memory", "ipc", "ring-buffer", "numpy", "pydantic", "zero-copy"]
