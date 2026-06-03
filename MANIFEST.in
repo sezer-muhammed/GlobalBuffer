@@ -1,3 +1,4 @@
 include src/global_buffer/_core.pyx
+include src/global_buffer/_core.c
 include src/global_buffer/gb_atomics.h
 include LICENSE README.md

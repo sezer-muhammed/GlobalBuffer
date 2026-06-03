@@ -12,7 +12,6 @@ requires-python = ">=3.9"
 authors = [{ name = "Izzet Sezer" }]
 keywords = ["shared-memory", "ipc", "ring-buffer", "numpy", "pydantic", "zero-copy"]
 classifiers = [
-  "License :: OSI Approved :: MIT License",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
