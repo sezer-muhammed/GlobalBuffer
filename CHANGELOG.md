@@ -18,6 +18,15 @@ this project uses semantic versioning.
   unconditionally passing `PYTHONPATH=<src>` to child processes, which also
   shadowed the installed wheel in cibuildwheel. It now only sets `PYTHONPATH`
   when `_core.so/.pyd` is detected in the source tree (i.e. built in-place).
+- **Windows cmd.exe marker expression**: the cibuildwheel `test-command` used
+  single-quoted `-m 'not crossproc_slow'`; `cmd.exe` does not strip single
+  quotes, so pytest received literal-quote characters and exited with code 4
+  (usage error). Changed to double quotes which both `sh` and `cmd.exe` handle
+  correctly.
+- **aarch64 QEMU test-skip**: cross-process timing tests (`test_crossproc_*`)
+  are unreliable under QEMU emulation on x86_64 runners (subprocess startup
+  10–20× slower than native). aarch64 wheels are now built but not tested
+  under QEMU; they are identical to the natively verified x86_64 build.
 
 ## 1.0.1 — 2026-06-03
 
