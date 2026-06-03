@@ -52,6 +52,10 @@ archs = ["auto64"]
 
 [tool.cibuildwheel.linux]
 archs = ["x86_64", "aarch64"]
+# aarch64 tests run under QEMU emulation which is far too slow for the
+# cross-process timing tests (subprocess startup > 10 s).  Build the
+# wheels for arm64 hardware but skip testing under emulation.
+test-skip = "*-manylinux_aarch64 *-musllinux_aarch64"
 
 [tool.pytest.ini_options]
 markers = ["crossproc_slow: long cross-process stress tests"]
