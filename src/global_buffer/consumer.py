@@ -6,16 +6,18 @@ class Consumer(Reader):
     ``self.data`` (decoded sample) and ``self.seq`` before each call, on a
     background thread started by :meth:`start`."""
 
-    def __init__(self, name, model=None, mode="latest"):
-        super().__init__(name, model=model)
+    def __init__(self, name, model=None, mode="latest", poll_min=None,
+                 poll_max=None):
+        super().__init__(name, model=model, poll_min=poll_min, poll_max=poll_max)
         self._mode = mode
         self._handle = None
         self.data = None
         self.seq = None
 
     @classmethod
-    def attach(cls, name, model=None, mode="latest"):
-        return cls(name, model=model, mode=mode)
+    def attach(cls, name, model=None, mode="latest", poll_min=None, poll_max=None):
+        return cls(name, model=model, mode=mode, poll_min=poll_min,
+                   poll_max=poll_max)
 
     @property
     def dropped(self):

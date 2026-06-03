@@ -9,6 +9,32 @@
 Wheels: CPython 3.9–3.13 on manylinux x86_64/aarch64, macOS x86_64/arm64,
 Windows amd64.
 
+## Scale & CPU (measured)
+
+Designed for many writers and many readers in one host alongside other work.
+Measured on a 10-core Apple-silicon laptop (CPU % is of one core):
+
+| stream | writer | reader (next) | reader (latest) |
+|---|---|---|---|
+| 100 KB/s | 0.3% | 0.7% | 0.7% |
+| 2 MB/s | 1.4% | 1.8% | 1.7% |
+| 100 MB/s | 2.3% | 3.0% | 2.9% |
+
+Key properties for fan-out:
+
+- **Writer CPU is flat in reader count** — 1.5% with 1 reader, 1.9% with 16
+  readers @ 2 MB/s. The writer only bumps a counter; it never signals readers.
+- **Readers are independent** — per-reader cost stays ~2% under fan-out.
+- **Idle floor** of a quiescent reader is ~0.5% of a core at the default 2 ms
+  poll cap. Raise `poll_max` to cut it: ~0.2% at a 10–50 ms cap (the residual is
+  Python thread overhead, not polling). So ~300 mostly-idle readers cost roughly
+  0.6–1.5 cores depending on `poll_max`. A future kernel-blocking backend will
+  drop the idle floor further.
+
+```python
+gb.attach("name", poll_max=0.02)   # 20 ms cap: lower idle CPU, +<=20 ms latency
+```
+
 ## Notification: why polling (for now)
 
 The current release wakes readers by adaptively polling the shared commit

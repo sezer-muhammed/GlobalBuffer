@@ -7,10 +7,12 @@ Create and own a named buffer (the writer). `schema` is a `gb.ArraySpec` or a
 `pydantic.BaseModel` subclass. `max_bytes` sets the slot size for message buffers
 (default 4096). `capacity` must be ≥ 1.
 
-### `gb.attach(name, model=None) -> Reader`
+### `gb.attach(name, model=None, poll_min=None, poll_max=None) -> Reader`
 Attach to an existing buffer (a reader). For message buffers, pass `model=` to
 get validated instances and a schema-compatibility check on attach; omit it to
-receive raw dicts.
+receive raw dicts. `poll_max` raises the wakeup poll-backoff cap in seconds
+(default ~2 ms) to lower idle CPU when running many readers, at the cost of up to
+that much extra wake latency; `poll_min` sets the busy floor.
 
 ### `gb.unlink(name)`
 Remove a named segment by name (e.g. clean up after a crash). No-op if absent.

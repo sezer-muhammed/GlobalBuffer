@@ -29,7 +29,9 @@ class _CallbackHandle:
         last = r._cursor
         while not self._stop.is_set():
             new = wait_for_count(get_count, last, timeout=0.2,
-                                 stop=self._stop.is_set)
+                                 stop=self._stop.is_set,
+                                 min_interval=r._poll_min,
+                                 max_interval=r._poll_max)
             if self._stop.is_set():
                 break
             if new is None:
@@ -58,10 +60,13 @@ class Reader(_ShmHandle):
 
     _role = "reader"
 
-    def __init__(self, name, model=None):
+    def __init__(self, name, model=None, poll_min=None, poll_max=None):
         self.name = name
         self._closed = False
         self.overruns = 0
+        self._poll_min = poll_min   # poll backoff floor (s); None -> Poller default
+        self._poll_max = poll_max   # poll backoff cap (s); raise it to cut idle CPU
+                                    # for many readers, at the cost of wake latency
         try:
             self._shm = open_shm(shm_name(name))
         except FileNotFoundError:
@@ -133,12 +138,16 @@ class Reader(_ShmHandle):
             if res is not None:
                 return res[0]
             if deadline is None:
-                wait_for_count(get_count, self._cursor, timeout=0.2)
+                wait_for_count(get_count, self._cursor, timeout=0.2,
+                               min_interval=self._poll_min,
+                               max_interval=self._poll_max)
                 continue
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise Empty(f"no sample within {timeout}s")
-            wait_for_count(get_count, self._cursor, timeout=remaining)
+            wait_for_count(get_count, self._cursor, timeout=remaining,
+                           min_interval=self._poll_min,
+                           max_interval=self._poll_max)
 
     def on_data(self, fn, mode="latest"):
         """Invoke ``fn(sample, seq)`` on a background thread as samples arrive."""

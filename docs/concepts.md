@@ -36,6 +36,19 @@ stalled writer.
 ## CPU behaviour
 
 Readers wake via adaptive polling of the shared commit counter: idle readers
-back off to ~2 ms between checks (a single atomic load each), so a quiescent
-reader costs almost nothing; an active reader keeps up at the writer's rate. See
-[platform.md](platform.md) for the rationale and future kernel-blocking path.
+back off to a cap between checks (a single atomic load each), so a quiescent
+reader costs almost nothing; an active reader keeps up at the writer's rate.
+
+The writer never signals readers (it just bumps the counter), so **writer CPU is
+independent of how many readers are attached** — important when fanning out to
+hundreds of readers.
+
+For many readers you can trade a little wake latency for lower idle CPU via the
+poll backoff cap:
+
+```python
+r = gb.attach("csi", poll_max=0.02)   # ~20 ms cap -> lower idle CPU per reader
+```
+
+See [platform.md](platform.md) for measured numbers and the future kernel-blocking
+path.

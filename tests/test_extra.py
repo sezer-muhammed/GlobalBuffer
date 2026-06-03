@@ -174,3 +174,36 @@ def test_next_blocks_until_data_arrives(make_writer, tmp_name):
     t.join(3.0)
     assert result["v"] == 99
     r.close()
+
+
+def test_poll_tuning_still_delivers(make_writer, tmp_name):
+    # a high poll cap must not break delivery, only relax wake latency
+    w = make_writer(gb.ArraySpec("int32", (1,)), capacity=4)
+    r = gb.attach(tmp_name, poll_max=0.05, poll_min=0.001)
+    assert r._poll_max == 0.05 and r._poll_min == 0.001
+    seen = []
+    h = r.on_data(lambda s, seq: seen.append(int(s[0])), mode="next")
+    time.sleep(0.05)
+    for i in range(3):
+        w.write(np.array([i], dtype=np.int32))
+    time.sleep(0.5)
+    h.stop()
+    assert seen == [0, 1, 2]
+    r.close()
+
+
+def test_poll_tuning_via_consumer(make_writer, tmp_name):
+    w = make_writer(gb.ArraySpec("int32", (1,)), capacity=4)
+
+    class C(gb.Consumer):
+        def callback(self):
+            pass
+
+    ob = C.attach(tmp_name, mode="latest", poll_max=0.03)
+    assert ob._poll_max == 0.03
+    ob.start()
+    time.sleep(0.05)
+    w.write(np.array([5], dtype=np.int32))
+    time.sleep(0.2)
+    ob.stop()
+    assert ob.seq == 0
