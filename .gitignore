@@ -1,11 +1,31 @@
+# Virtual environments
 .venv/
+venv/
+env/
+
+# Build artifacts
 build/
 dist/
 wheelhouse/
 *.egg-info/
+.eggs/
+
+# Cython / C generated + compiled extensions
 src/global_buffer/_core.c
 *.so
 *.pyd
+*.o
+
+# Python caches
 __pycache__/
+*.py[cod]
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Editors / OS
+.idea/
+.vscode/
 .DS_Store

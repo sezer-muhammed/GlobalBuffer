@@ -157,8 +157,8 @@ differ from x86; run the suite on the target device once as a smoke test.
 
 ## Design
 
-Full design rationale and the on-disk segment layout are in
-[`docs/superpowers/specs/2026-06-02-globalbuffer-design.md`](docs/superpowers/specs/2026-06-02-globalbuffer-design.md).
+Full documentation is in [`docs/`](docs/index.md); design rationale and the
+on-disk segment layout are in [`docs/design.md`](docs/design.md).
 
 ## License
 

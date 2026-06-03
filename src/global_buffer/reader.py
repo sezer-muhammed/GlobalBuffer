@@ -148,6 +148,26 @@ class Reader(_ShmHandle):
         return _CallbackHandle(self, fn, mode)
 
     @property
+    def shape(self):
+        """Declared array shape (None for message buffers)."""
+        return getattr(self, "_shape", None) if self.kind == layout.KIND_ARRAY else None
+
+    @property
+    def dtype(self):
+        """Declared numpy dtype (None for message buffers)."""
+        return getattr(self, "_dtype", None) if self.kind == layout.KIND_ARRAY else None
+
+    @property
+    def nbytes(self):
+        """Bytes per array sample (None for message buffers)."""
+        if self.kind != layout.KIND_ARRAY:
+            return None
+        n = self._dtype.itemsize
+        for d in self._shape:
+            n *= d
+        return n
+
+    @property
     def writer_alive(self):
         hb = _core.get_writer_heartbeat(self._shm.buf)
         if hb == 0:
