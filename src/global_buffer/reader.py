@@ -2,12 +2,11 @@ import json
 import os
 import threading
 import time
-from multiprocessing import shared_memory
 
 import numpy as np
 
 from . import _core, layout
-from .buffer import shm_name
+from .buffer import _TRACK, open_shm, shm_name
 from .codec import MessageCodec
 from .exceptions import BufferClosed, BufferNotFound, Empty, SchemaMismatch
 from .notifier import wait_for_count
@@ -66,11 +65,12 @@ class Reader:
         self._closed = False
         self.overruns = 0
         try:
-            self._shm = shared_memory.SharedMemory(name=shm_name(name))
+            self._shm = open_shm(shm_name(name))
         except FileNotFoundError:
             raise BufferNotFound(f"no buffer named {name!r}")
 
-        self._detach_resource_tracker()
+        if not _TRACK:
+            self._detach_resource_tracker()
         self._header = layout.read_header(self._shm.buf)
         if self._header["magic"] != layout.MAGIC:
             self._shm.close()

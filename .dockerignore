@@ -1,0 +1,10 @@
+.venv/
+build/
+dist/
+wheelhouse/
+*.egg-info/
+__pycache__/
+.git/
+.pytest_cache/
+src/global_buffer/_core.c
+*.so

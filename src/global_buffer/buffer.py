@@ -15,6 +15,32 @@ def shm_name(name):
     return f"gb_{name}"
 
 
+def _supports_track():
+    import inspect
+    try:
+        return "track" in inspect.signature(shared_memory.SharedMemory).parameters
+    except (TypeError, ValueError):
+        return False
+
+
+_TRACK = _supports_track()
+
+
+def open_shm(name, create=False, size=0):
+    """Open/create a shared-memory segment with resource-tracker disabled where
+    supported (Python 3.13+). GlobalBuffer manages segment lifecycle explicitly
+    via unlink(), so the multiprocessing resource_tracker must not auto-unlink
+    segments out from under other processes."""
+    if _TRACK:
+        if create:
+            return shared_memory.SharedMemory(name=name, create=True, size=size,
+                                              track=False)
+        return shared_memory.SharedMemory(name=name, track=False)
+    if create:
+        return shared_memory.SharedMemory(name=name, create=True, size=size)
+    return shared_memory.SharedMemory(name=name)
+
+
 class GlobalBuffer:
     """Writer/owner handle for a named shared-memory buffer.
 
@@ -44,8 +70,7 @@ class GlobalBuffer:
 
         g = layout.geometry(kind, n_slots, slot_size)
         try:
-            self._shm = shared_memory.SharedMemory(
-                name=shm_name(name), create=True, size=g["total_size"])
+            self._shm = open_shm(shm_name(name), create=True, size=g["total_size"])
         except FileExistsError:
             raise BufferExists(f"buffer {name!r} already exists")
 

@@ -1,0 +1,12 @@
+# Two separate processes sharing one POSIX shared-memory segment.
+# The reader joins the writer's IPC namespace so /dev/shm is shared.
+services:
+  writer:
+    build: .
+    ipc: shareable
+    command: python examples/array_writer.py
+  reader:
+    build: .
+    ipc: "service:writer"
+    command: python examples/array_reader.py
+    depends_on: [writer]
