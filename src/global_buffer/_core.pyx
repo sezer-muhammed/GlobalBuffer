@@ -131,22 +131,23 @@ def read_latest(object buf):
     """Return (bytes_copy, seq, length) of newest sample, or None if empty."""
     cdef Py_buffer view
     cdef unsigned char* base = _base(buf, &view)
-    cdef uint64_t n_slots, count, seq, idx, payload_off
+    cdef uint64_t n_slots, count, seq, idx, payload_off, slots_off, stride
     cdef Py_ssize_t soff
     cdef uint32_t l1, l2, length
     cdef bytes out
     cdef int tries
     try:
-        count = gb_load_u64(base + O_LATEST_COUNT)
-        if count == 0:
-            return None
         n_slots = _u32(base, O_NSLOTS)
         payload_off = _u32(base, O_PAYLOAD_OFF)
+        slots_off = _u64(base, O_SLOTS_OFF)
+        stride = _u64(base, O_SLOT_STRIDE)
         for tries in range(64):
             count = gb_load_u64(base + O_LATEST_COUNT)
+            if count == 0:
+                return None
             seq = count - 1
             idx = seq % n_slots
-            soff = _slot_off(base, idx)
+            soff = <Py_ssize_t>(slots_off + idx * stride)
             l1 = gb_load_u32(base + soff + S_LOCK)
             if l1 & 1:
                 continue
@@ -166,6 +167,7 @@ def read_next(object buf, uint64_t cursor):
     cdef Py_buffer view
     cdef unsigned char* base = _base(buf, &view)
     cdef uint64_t n_slots, count, capacity, oldest, seq, idx, payload_off
+    cdef uint64_t slots_off, stride
     cdef uint64_t overruns = 0
     cdef Py_ssize_t soff
     cdef uint32_t l1, l2, length
@@ -178,6 +180,8 @@ def read_next(object buf, uint64_t cursor):
         n_slots = _u32(base, O_NSLOTS)
         capacity = n_slots - 1
         payload_off = _u32(base, O_PAYLOAD_OFF)
+        slots_off = _u64(base, O_SLOTS_OFF)
+        stride = _u64(base, O_SLOT_STRIDE)
         if count > capacity and cursor < count - capacity:
             oldest = count - capacity
             overruns = oldest - cursor
@@ -185,7 +189,7 @@ def read_next(object buf, uint64_t cursor):
         seq = cursor
         for tries in range(64):
             idx = seq % n_slots
-            soff = _slot_off(base, idx)
+            soff = <Py_ssize_t>(slots_off + idx * stride)
             l1 = gb_load_u32(base + soff + S_LOCK)
             if l1 & 1:
                 continue

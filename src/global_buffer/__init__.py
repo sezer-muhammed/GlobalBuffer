@@ -4,10 +4,10 @@ Zero-copy numpy array streams and pydantic message streams, last-value or
 in-order reads, and background callbacks. See the README for the full API.
 """
 from ._version import __version__
-from .buffer import GlobalBuffer, shm_name
+from .buffer import GlobalBuffer, open_shm, shm_name
 from .consumer import Consumer
 from .exceptions import (BufferClosed, BufferExists, BufferNotFound, Empty,
-                         GlobalBufferError, SchemaMismatch, TooManyReaders)
+                         GlobalBufferError, SchemaMismatch)
 from .reader import Reader
 from .spec import ArraySpec
 
@@ -26,9 +26,8 @@ def attach(name, model=None):
 
 def unlink(name):
     """Remove a named segment by name (e.g. to clean up after a crash)."""
-    from multiprocessing import shared_memory
     try:
-        shm = shared_memory.SharedMemory(name=shm_name(name))
+        shm = open_shm(shm_name(name))
     except FileNotFoundError:
         return
     shm.close()
@@ -39,5 +38,5 @@ __all__ = [
     "__version__", "ArraySpec", "GlobalBuffer", "Reader", "Consumer",
     "create", "attach", "unlink",
     "GlobalBufferError", "Empty", "SchemaMismatch", "BufferClosed",
-    "BufferExists", "BufferNotFound", "TooManyReaders",
+    "BufferExists", "BufferNotFound",
 ]

@@ -7,7 +7,7 @@ import global_buffer as gb
 def test_exceptions_hierarchy():
     from global_buffer import exceptions as e
     for name in ["Empty", "SchemaMismatch", "BufferClosed",
-                 "BufferExists", "BufferNotFound", "TooManyReaders"]:
+                 "BufferExists", "BufferNotFound"]:
         assert issubclass(getattr(e, name), e.GlobalBufferError)
 
 

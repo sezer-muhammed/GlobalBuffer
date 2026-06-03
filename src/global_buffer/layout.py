@@ -110,6 +110,10 @@ def write_msg_header(buf, n_slots, slot_size, schema_json, schema_hash):
     buf[O_SCHEMA_JSON:O_SCHEMA_JSON + len(schema_json)] = schema_json
 
 
+def write_writer_pid(buf, pid):
+    struct.pack_into("<Q", buf, O_WRITER_PID, int(pid))
+
+
 def read_header(buf):
     (magic, version, kind, n_slots) = struct.unpack_from("<IIII", buf, 0)
     slot_stride_v = struct.unpack_from("<Q", buf, O_SLOT_STRIDE)[0]

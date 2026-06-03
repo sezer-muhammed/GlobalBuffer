@@ -6,18 +6,21 @@ class Consumer(Reader):
     ``self.data`` (decoded sample) and ``self.seq`` before each call, on a
     background thread started by :meth:`start`."""
 
-    def __init__(self, name, model=None, mode="latest", zero_copy=False):
+    def __init__(self, name, model=None, mode="latest"):
         super().__init__(name, model=model)
         self._mode = mode
-        self._zero_copy = zero_copy
         self._handle = None
         self.data = None
         self.seq = None
-        self.dropped = 0
 
     @classmethod
-    def attach(cls, name, model=None, mode="latest", zero_copy=False):
-        return cls(name, model=model, mode=mode, zero_copy=zero_copy)
+    def attach(cls, name, model=None, mode="latest"):
+        return cls(name, model=model, mode=mode)
+
+    @property
+    def dropped(self):
+        """Samples skipped because the consumer fell behind (alias of overruns)."""
+        return self.overruns
 
     def callback(self):
         raise NotImplementedError("subclasses must implement callback(self)")
@@ -30,8 +33,7 @@ class Consumer(Reader):
     def start(self):
         if self._handle is not None:
             return
-        self._handle = super().on_data(self._dispatch, mode=self._mode,
-                                       zero_copy=self._zero_copy)
+        self._handle = super().on_data(self._dispatch, mode=self._mode)
 
     def stop(self):
         if self._handle is not None:

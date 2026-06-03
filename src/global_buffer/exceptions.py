@@ -21,6 +21,3 @@ class BufferExists(GlobalBufferError):
 class BufferNotFound(GlobalBufferError):
     """attach() called for a name with no live segment."""
 
-
-class TooManyReaders(GlobalBufferError):
-    """Reader registry is full."""
