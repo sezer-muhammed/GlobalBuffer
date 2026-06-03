@@ -47,7 +47,7 @@ version = { attr = "global_buffer._version.__version__" }
 build = "cp39-* cp310-* cp311-* cp312-* cp313-*"
 skip = "*-musllinux_i686 *_i686 pp*"
 test-requires = ["pytest", "numpy", "msgspec", "pydantic"]
-test-command = "pytest {project}/tests -m 'not crossproc_slow'"
+test-command = 'pytest {project}/tests -m "not crossproc_slow"'
 archs = ["auto64"]
 
 [tool.cibuildwheel.linux]
