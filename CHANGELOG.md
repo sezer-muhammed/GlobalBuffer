@@ -1,0 +1,42 @@
+# Changelog
+
+All notable changes to GlobalBuffer are documented here.
+Format loosely follows [Keep a Changelog](https://keepachangelog.com/);
+this project uses semantic versioning.
+
+## 1.0.0 — 2026-06-02
+
+First stable release.
+
+### Features
+- Cross-process named shared-memory buffer with last-value (`latest`) and
+  no-drop in-order (`next`) read semantics.
+- **Array streams** — fixed dtype/shape numpy data, zero-copy writes via
+  `reserve()`.
+- **Message streams** — `pydantic` models on the public API, `msgspec` (msgpack)
+  on the wire.
+- Lock-free, tear-free single-writer / multi-reader ring: `capacity + 1` spare
+  slot plus a per-slot seqlock built on C11 atomics (Cython `_core`).
+- Background callbacks via `on_data()` and the subclassable `Consumer`.
+- Near-0-CPU wakeups via adaptive polling of the shared commit counter; the poll
+  backoff is tunable per reader with `poll_min` / `poll_max`.
+- Heartbeat-based `reader.writer_alive`; `overruns` accounting; reader
+  introspection (`shape` / `dtype` / `nbytes`).
+- Explicit lifecycle (`close` / `unlink` / `gb.unlink(name)`); opts out of the
+  multiprocessing `resource_tracker`.
+- Benchmark/showcase examples (`writer.py`, `reader.py`) plus focused examples.
+- Packaging: Cython build, cibuildwheel config, Docker + compose, CI matrix.
+
+### Verified
+- 70 tests pass on macOS / CPython 3.14, including a cross-process
+  no-torn-reads stress test. Wheel builds and installs into a clean environment.
+
+### Known limitations
+- Broad CI verification on Linux / Windows / aarch64 (Jetson) is pending; wheels
+  and workflows are configured but not yet exercised in this release.
+- Reads copy out of shared memory; read-side zero-copy primitives exist in the
+  core (`read_view_info` / `validate`) but are not wired into the reader yet.
+- Notification is adaptive polling; a true 0-CPU kernel-blocking backend
+  (eventfd / process-shared condvar / Windows semaphore) is planned.
+- Single-writer per buffer is by design; `create()` guards with `BufferExists`
+  but misuse is not otherwise prevented. No access control on segments.

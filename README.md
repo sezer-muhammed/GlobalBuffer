@@ -15,6 +15,14 @@ It fills the gap between `multiprocessing.shared_memory` (too low-level),
 a pip-installable, pydantic-native, callback-driven buffer with a clean API and a
 lock-free Cython hot path.
 
+## Status
+
+**v1.0.0.** Core is stable and covered by 70 tests (including a cross-process
+no-torn-reads stress test), verified on macOS / CPython 3.14. Linux, Windows and
+aarch64 (Jetson) are supported and wheels are configured, with broad CI
+verification on those platforms in progress. See [`CHANGELOG.md`](CHANGELOG.md)
+for known limitations.
+
 ## Features
 
 - **Two stream kinds, one API**
@@ -120,6 +128,10 @@ exiting never unlinks the owner's segment.
 | macOS | `multiprocessing.shared_memory` (POSIX shm) | adaptive poll on commit counter |
 | Windows | `multiprocessing.shared_memory` (mem-mapped) | adaptive poll on commit counter |
 
+> **Verification status.** Behaviour is verified on macOS today; the Linux/Windows
+> CI matrix and aarch64 wheels are configured and will be exercised before those
+> platforms are declared production-verified.
+>
 > **Note on notifications.** The current release uses adaptive polling of the
 > shared commit counter for wakeups — fully portable, reliable on all three OSes,
 > and near-0 CPU when idle (the poll interval backs off to ~2 ms). A true 0-CPU

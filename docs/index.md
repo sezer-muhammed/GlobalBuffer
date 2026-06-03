@@ -16,6 +16,8 @@ callbacks, near-0-CPU when idle.
 - [Design](design.md) — architecture, memory layout, seqlock
 - [Platform support](platform.md)
 - [Development](development.md) — build, test, Docker, wheels
+- [FAQ](faq.md)
+- [Changelog](../CHANGELOG.md)
 
 ## 30-second tour
 
