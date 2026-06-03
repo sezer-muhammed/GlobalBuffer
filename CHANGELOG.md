@@ -4,6 +4,24 @@ All notable changes to GlobalBuffer are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/);
 this project uses semantic versioning.
 
+## 1.0.1 — 2026-06-03
+
+### Fixed
+- **Windows build**: `gb_atomics.h` now uses `volatile` + `_ReadWriteBarrier`
+  for MSVC; the C11 `<stdatomic.h>` header only works with clang-cl, not the
+  native MSVC compiler. All four Windows Python versions now build and pass.
+- **`writer_alive` cross-process bug (macOS 3.9 / ARM64)**: heartbeat was
+  stored with `time.monotonic_ns()` which has a per-process epoch on Python 3.9
+  macOS ARM64, causing the reader to always see the writer as dead.
+  Switched to `time.time_ns()` (wall-clock Unix epoch), which is consistent
+  across all processes on the same machine.
+- **`test_crossproc_writer_death` timing**: replaced a fixed 1.5 s sleep with a
+  10 s poll loop so slow process starts (Python 3.9 macOS notarisation) don't
+  flake.
+- **PyPI package name**: renamed from `GlobalBuffer` to `global_buffer` for PEP
+  508 compliance; pre-built wheels for CPython 3.9–3.13 on Linux x86_64/aarch64,
+  macOS x86_64/arm64, and Windows amd64 are now published.
+
 ## 1.0.0 — 2026-06-02
 
 First stable release.

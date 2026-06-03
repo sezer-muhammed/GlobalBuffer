@@ -181,4 +181,4 @@ class Reader(_ShmHandle):
         hb = _core.get_writer_heartbeat(self._shm.buf)
         if hb == 0:
             return False
-        return (time.monotonic_ns() - hb) < WRITER_TIMEOUT_NS
+        return (time.time_ns() - hb) < WRITER_TIMEOUT_NS

@@ -170,7 +170,7 @@ class GlobalBuffer(_ShmHandle):
 
     # ---- liveness ----
     def heartbeat(self):
-        _core.set_writer_heartbeat(self._shm.buf, time.monotonic_ns())
+        _core.set_writer_heartbeat(self._shm.buf, time.time_ns())
 
     # ---- lifecycle ----
     def unlink(self):
