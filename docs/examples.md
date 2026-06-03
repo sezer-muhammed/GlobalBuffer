@@ -22,10 +22,24 @@ python examples/reader.py --mode latest
 `--dtype --capacity --duration`.
 `reader.py` flags: `--name --mode {next,latest} --verify --duration`.
 
-Each reader reports samples/s, MB/s, cumulative MB, and `overruns` (how far it
-fell behind). Unthrottled on a laptop the writer pushes multiple GB/s; a `next`
-reader that can't keep up shows large `overruns` but `bad=0` — proof the ring is
-tear-free even under lapping.
+By default the reader uses the **efficient** path — a background callback that
+blocks until a new sample arrives (near-0 CPU when idle) and processes each sample
+once — so its reported rate tracks the writer's real rate.
+
+- **`next`** mode reports `overruns` (how far it fell behind); under a fast writer
+  a slow `next` reader shows large `overruns` but `bad=0` — proof the ring is
+  tear-free even while being lapped.
+- **`latest`** mode reports `skipped` — frames the writer produced that this reader
+  coalesced past (it only ever processes the newest). Its rate equals the number
+  of *distinct* newest frames it actually handled.
+
+### `--spin` (latest only) — raw reread bandwidth
+
+`python examples/reader.py --mode latest --spin` busy-loops `latest()` as fast as
+the CPU allows and counts every read. This produces a very large MB/s number, but
+it is **rereading the same current frame repeatedly** and pins a CPU core — it
+measures shared-memory reread bandwidth, **not** inter-process throughput. Use the
+default (callback) path for real, efficient consumption.
 
 ## Focused examples
 
