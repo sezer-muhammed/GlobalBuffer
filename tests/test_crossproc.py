@@ -75,9 +75,22 @@ def test_crossproc_writer_death(tmp_name):
         "time.sleep(30)"
     )
     child = subprocess.Popen([sys.executable, "-c", code], env=ENV)
-    time.sleep(1.5)
-    r = gb.attach(tmp_name)
-    assert r.writer_alive is True
+    # Poll until writer is alive (up to 10 s).  Python 3.9 on macOS spawns
+    # subprocesses slowly due to notarization / dyld checks.
+    deadline = time.monotonic() + 10
+    r = None
+    while time.monotonic() < deadline:
+        time.sleep(0.2)
+        try:
+            if r is None:
+                r = gb.attach(tmp_name)
+            if r.writer_alive:
+                break
+        except gb.BufferNotFound:
+            if r is not None:
+                r.close()
+                r = None
+    assert r is not None and r.writer_alive is True, "writer did not come alive within 10 s"
     child.kill()
     child.wait()
     time.sleep(2.5)
