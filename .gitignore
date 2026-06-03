@@ -10,6 +10,10 @@ wheelhouse/
 *.egg-info/
 .eggs/
 
+# macOS metadata
+._*
+.DS_Store
+
 # Cython / C generated + compiled extensions
 src/global_buffer/_core.c
 *.so

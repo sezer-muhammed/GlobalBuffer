@@ -39,7 +39,7 @@ for known limitations.
 ## Install
 
 ```bash
-pip install GlobalBuffer
+pip install global_buffer
 ```
 
 Wheels are published for CPython 3.9–3.13 on manylinux x86_64 / aarch64,

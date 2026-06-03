@@ -3,7 +3,7 @@ requires = ["setuptools>=64", "wheel", "Cython>=3.0", "numpy>=1.23"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "GlobalBuffer"
+name = "global_buffer"
 dynamic = ["version"]
 description = "Cross-platform cross-process shared-memory ring buffer: zero-copy numpy arrays + pydantic messages, 0-CPU blocking callbacks."
 readme = "README.md"
@@ -11,7 +11,28 @@ license = "MIT"
 requires-python = ">=3.9"
 authors = [{ name = "Izzet Sezer" }]
 keywords = ["shared-memory", "ipc", "ring-buffer", "numpy", "pydantic", "zero-copy"]
+classifiers = [
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Operating System :: OS Independent",
+  "Topic :: System :: Hardware",
+  "Topic :: System :: Networking",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+]
 dependencies = ["numpy>=1.23", "msgspec>=0.18", "pydantic>=2"]
+
+[project.urls]
+Homepage = "https://github.com/sezer-muhammed/GlobalBuffer"
+Repository = "https://github.com/sezer-muhammed/GlobalBuffer"
+Documentation = "https://github.com/sezer-muhammed/GlobalBuffer/tree/main/docs"
+Changelog = "https://github.com/sezer-muhammed/GlobalBuffer/blob/main/CHANGELOG.md"
+"Bug Tracker" = "https://github.com/sezer-muhammed/GlobalBuffer/issues"
 
 [project.optional-dependencies]
 dev = ["pytest>=7", "Cython>=3.0"]

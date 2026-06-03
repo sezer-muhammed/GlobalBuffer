@@ -3,6 +3,7 @@ on:
   workflow_dispatch:
   release:
     types: [published]
+
 jobs:
   wheels:
     name: wheels-${{ matrix.os }}
@@ -23,6 +24,7 @@ jobs:
         with:
           name: wheels-${{ matrix.os }}
           path: ./wheelhouse/*.whl
+
   sdist:
     runs-on: ubuntu-latest
     steps:
@@ -35,3 +37,27 @@ jobs:
         with:
           name: sdist
           path: dist/*.tar.gz
+
+  publish:
+    needs: [wheels, sdist]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release'
+    environment:
+      name: pypi
+      url: https://pypi.org/p/global_buffer
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: wheels-*
+          merge-multiple: true
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdist
+          path: dist
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
