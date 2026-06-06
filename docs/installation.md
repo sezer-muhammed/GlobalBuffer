@@ -1,7 +1,7 @@
 # Installation
 
 ```bash
-pip install GlobalBuffer
+pip install global_buffer
 ```
 
 Prebuilt wheels cover CPython 3.9–3.13 on:

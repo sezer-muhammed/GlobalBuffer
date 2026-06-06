@@ -1,16 +1,26 @@
 name: wheels
 on:
   workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish artifacts to PyPI"
+        type: boolean
+        default: false
+      version:
+        description: "Expected package version when publishing manually, e.g. 1.0.2"
+        type: string
+        required: false
   release:
     types: [published]
 
 jobs:
   wheels:
     name: wheels-${{ matrix.os }}
+    timeout-minutes: 180
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-13, macos-14, windows-latest]
+        os: [ubuntu-latest, macos-15-intel, macos-15, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -41,7 +51,7 @@ jobs:
   publish:
     needs: [wheels, sdist]
     runs-on: ubuntu-latest
-    if: github.event_name == 'release'
+    if: github.event_name == 'release' || inputs.publish
     environment:
       name: pypi
       url: https://pypi.org/p/global_buffer
@@ -57,6 +67,38 @@ jobs:
         with:
           name: sdist
           path: dist
+      - name: Validate release version
+        env:
+          EXPECTED_VERSION: ${{ github.event_name == 'release' && github.ref_name || inputs.version }}
+        run: |
+          python - <<'PY'
+          import email.parser
+          import glob
+          import os
+          import tarfile
+
+          expected = os.environ["EXPECTED_VERSION"].removeprefix("v")
+          if not expected:
+              raise SystemExit("expected version is required when publishing manually")
+
+          sdists = glob.glob("dist/*.tar.gz")
+          if len(sdists) != 1:
+              raise SystemExit(f"expected exactly one sdist, found {sdists}")
+
+          with tarfile.open(sdists[0], "r:gz") as archive:
+              pkg_info_name = next(
+                  name for name in archive.getnames() if name.endswith("/PKG-INFO")
+              )
+              metadata = email.parser.Parser().parsestr(
+                  archive.extractfile(pkg_info_name).read().decode()
+              )
+
+          actual = metadata["Version"]
+          if actual != expected:
+              raise SystemExit(
+                  f"expected version {expected} does not match package version {actual}"
+              )
+          PY
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
