@@ -15,24 +15,48 @@ on:
 
 jobs:
   wheels:
-    name: wheels-${{ matrix.os }}
-    timeout-minutes: 180
+    name: wheels-${{ matrix.name }}
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-15-intel, macos-15, windows-latest]
+        include:
+          - name: linux-x86_64
+            os: ubuntu-latest
+            archs: x86_64
+          - name: macos-x86_64
+            os: macos-15-intel
+            archs: x86_64
+          - name: macos-arm64
+            os: macos-15
+            archs: arm64
+          - name: windows-amd64
+            os: windows-latest
+            archs: AMD64
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - uses: pypa/cibuildwheel@v2.21
+        env:
+          CIBW_ARCHS: ${{ matrix.archs }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-wheels-${{ matrix.name }}
+          path: ./wheelhouse/*.whl
+
+  wheels-linux-aarch64:
+    timeout-minutes: 180
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
       - name: Set up QEMU (linux aarch64 incl. Jetson)
-        if: runner.os == 'Linux'
         uses: docker/setup-qemu-action@v3
       - uses: pypa/cibuildwheel@v2.21
         env:
-          CIBW_ARCHS_LINUX: "x86_64 aarch64"
+          CIBW_ARCHS_LINUX: aarch64
       - uses: actions/upload-artifact@v4
         with:
-          name: wheels-${{ matrix.os }}
+          name: extra-wheels-linux-aarch64
           path: ./wheelhouse/*.whl
 
   sdist:
@@ -60,7 +84,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          pattern: wheels-*
+          pattern: release-wheels-*
           merge-multiple: true
           path: dist
       - uses: actions/download-artifact@v4
@@ -100,6 +124,58 @@ jobs:
               )
           PY
       - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
+
+  publish-linux-aarch64:
+    needs: [publish, wheels-linux-aarch64]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release' || inputs.publish
+    environment:
+      name: pypi
+      url: https://pypi.org/p/global_buffer
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: extra-wheels-linux-aarch64
+          path: dist
+      - name: Validate aarch64 wheel version
+        env:
+          EXPECTED_VERSION: ${{ github.event_name == 'release' && github.ref_name || inputs.version }}
+        run: |
+          python - <<'PY'
+          import email.parser
+          import glob
+          import os
+          import zipfile
+
+          expected = os.environ["EXPECTED_VERSION"].removeprefix("v")
+          if not expected:
+              raise SystemExit("expected version is required when publishing manually")
+
+          wheels = glob.glob("dist/*.whl")
+          if not wheels:
+              raise SystemExit("expected at least one aarch64 wheel")
+
+          for wheel in wheels:
+              with zipfile.ZipFile(wheel) as archive:
+                  metadata_name = next(
+                      name for name in archive.namelist()
+                      if name.endswith(".dist-info/METADATA")
+                  )
+                  metadata = email.parser.Parser().parsestr(
+                      archive.read(metadata_name).decode()
+                  )
+              actual = metadata["Version"]
+              if actual != expected:
+                  raise SystemExit(
+                      f"expected version {expected} does not match {wheel} version {actual}"
+                  )
+          PY
+      - name: Publish aarch64 wheels to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           password: ${{ secrets.PYPI_API_TOKEN }}
