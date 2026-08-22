@@ -177,6 +177,14 @@ PYTHONPATH=src python benchmarks/benchmark_hz.py \
   --rates 10 30 60 120 200 500 1000 --duration 2
 ```
 
+For a 32 KiB `int8` payload, use 32,768 elements:
+
+```bash
+PYTHONPATH=src python benchmarks/benchmark_hz.py \
+  --dtype int8 --elements 32768 \
+  --rates 10 30 60 120 200 500 1000 --duration 2
+```
+
 The benchmark reports requested rate, achieved write/read rate, callback
 overruns, combined process CPU percentage, and CPU microseconds per written
 sample. It uses one writer and one callback reader in the same process; use it
@@ -202,6 +210,21 @@ Representative 2-second sweep (`capacity=256`, one callback reader):
 
 These numbers are machine- and scheduler-dependent; rerun the command above
 for production hardware and payload sizes.
+
+32 KiB `int8` sweep on the same machine:
+
+| Target | Write rate | Read rate | Overruns | Combined CPU |
+|---:|---:|---:|---:|---:|
+| 10 Hz | 10.0 Hz | 10.0 Hz | 0 | 1.56% |
+| 30 Hz | 30.0 Hz | 30.0 Hz | 0 | 3.12% |
+| 60 Hz | 60.5 Hz | 60.0 Hz | 0 | 0.79% |
+| 120 Hz | 120.0 Hz | 120.0 Hz | 0 | 1.56% |
+| 200 Hz | 200.5 Hz | 200.0 Hz | 0 | 4.70% |
+| 500 Hz | 499.9 Hz | 499.9 Hz | 0 | 8.59% |
+| 1000 Hz | 1000.3 Hz | 999.8 Hz | 0 | 14.07% |
+
+At 1000 Hz this is 32.768 MB/s of payload in each direction; the benchmark
+still delivered 1,999 of 2,000 callbacks with zero ring overruns.
 
 ## Run the tests
 

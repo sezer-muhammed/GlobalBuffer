@@ -14,10 +14,11 @@ import numpy as np
 import global_buffer as gb
 
 
-def run_rate(rate, duration, capacity, elements):
+def run_rate(rate, duration, capacity, dtype, elements):
+    np_dtype = np.dtype(dtype)
     name = f"gb_bench_{time.time_ns()}"
     writer = gb.create(
-        name, gb.ArraySpec("float32", (elements,)), capacity=capacity
+        name, gb.ArraySpec(np_dtype.name, (elements,)), capacity=capacity
     )
     reader = gb.attach(name)
     delivered = 0
@@ -27,7 +28,7 @@ def run_rate(rate, duration, capacity, elements):
         delivered += 1
 
     handle = reader.on_data(on_data, mode="next")
-    frame = np.zeros(elements, dtype=np.float32)
+    frame = np.zeros(elements, dtype=np_dtype)
     period = 1.0 / rate
     written = 0
     time.sleep(0.05)  # let the callback thread reach its wait loop
@@ -76,6 +77,7 @@ def main():
     )
     parser.add_argument("--duration", type=float, default=2.0)
     parser.add_argument("--capacity", type=int, default=256)
+    parser.add_argument("--dtype", default="float32")
     parser.add_argument("--elements", type=int, default=64)
     args = parser.parse_args()
 
@@ -84,7 +86,9 @@ def main():
         "cpu_pct cpu_us_sample"
     )
     for rate in args.rates:
-        result = run_rate(rate, args.duration, args.capacity, args.elements)
+        result = run_rate(
+            rate, args.duration, args.capacity, args.dtype, args.elements
+        )
         print(
             f"{result['target_hz']:9.1f} {result['written']:7d} "
             f"{result['delivered']:9d} {result['overruns']:8d} "
