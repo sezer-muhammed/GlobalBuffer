@@ -72,6 +72,9 @@ class _ShmHandle:
         if self._closed:
             return
         self._closed = True
+        bound = getattr(self, "_bound", None)
+        if bound is not None:
+            bound.close()
         self._shm.close()
 
     def __enter__(self):
@@ -108,7 +111,8 @@ class GlobalBuffer(_ShmHandle):
         else:
             self._model = info["model"]
             slot_size = max_bytes or 4096
-            self._codec = MessageCodec(info["model"], validate=True)
+            self._codec = MessageCodec(info["model"], validate=True,
+                                       codec=info["codec"])
             self._schema_json = info["schema_json"]
             self._schema_hash = info["schema_hash"]
 
@@ -125,12 +129,14 @@ class GlobalBuffer(_ShmHandle):
         else:
             layout.write_msg_header(buf, n_slots=n_slots, slot_size=slot_size,
                                     schema_json=self._schema_json,
-                                    schema_hash=self._schema_hash)
+                                    schema_hash=self._schema_hash,
+                                    codec=info["codec"])
         self._n_slots = n_slots
         self._slot_size = slot_size
         self._geo = g
+        self._bound = _core.bind(buf)
         layout.write_writer_pid(buf, os.getpid())
-        self.heartbeat()
+        self._bound.set_writer_heartbeat(time.time_ns())
 
     # ---- writes ----
     def write(self, data):
@@ -140,15 +146,14 @@ class GlobalBuffer(_ShmHandle):
             arr = np.ascontiguousarray(data, dtype=self._dtype)
             if arr.shape != self._shape:
                 raise ValueError(f"shape {arr.shape} != declared {self._shape}")
-            _core.commit_copy(self._shm.buf, arr, arr.nbytes)
+            self._bound.commit_copy(arr, arr.nbytes, time.time_ns())
         else:
             blob = self._codec.encode(data)
             if len(blob) > self._slot_size:
                 raise ValueError(
                     f"encoded message {len(blob)}B exceeds max_bytes "
                     f"{self._slot_size}")
-            _core.commit_copy(self._shm.buf, blob, len(blob))
-        self.heartbeat()
+            self._bound.commit_copy(blob, len(blob), time.time_ns())
 
     @contextmanager
     def reserve(self):
@@ -159,18 +164,17 @@ class GlobalBuffer(_ShmHandle):
         self._check()
         if self.kind != layout.KIND_ARRAY:
             raise TypeError("reserve() is only valid for array buffers")
-        idx, payload_off = _core.reserve_begin(self._shm.buf)
+        idx, payload_off = self._bound.reserve_begin()
         view = np.ndarray(self._shape, dtype=self._dtype,
                           buffer=self._shm.buf, offset=payload_off)
         try:
             yield view
         finally:
-            _core.reserve_commit(self._shm.buf, idx, self._spec.nbytes)
-            self.heartbeat()
+            self._bound.reserve_commit(idx, self._spec.nbytes, time.time_ns())
 
     # ---- liveness ----
     def heartbeat(self):
-        _core.set_writer_heartbeat(self._shm.buf, time.time_ns())
+        self._bound.set_writer_heartbeat(time.time_ns())
 
     # ---- lifecycle ----
     def unlink(self):

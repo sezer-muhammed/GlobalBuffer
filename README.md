@@ -27,7 +27,7 @@ for known limitations.
 
 - **Two stream kinds, one API**
   - **Array streams** — fixed dtype + shape numpy data, written and read **zero-copy**.
-  - **Message streams** — `pydantic` models on the public API, `msgspec` (msgpack) on the wire (~10× faster than pickle).
+  - **Message streams** — `pydantic` models use `msgspec` (msgpack), while protobuf schemas use native protobuf serialization on the wire.
 - **Last-value or in-order reads** — `latest()` jumps to the newest sample;
   `next()` consumes every sample in order and reports `overruns` if a reader falls behind.
 - **Lock-free, tear-free** — single-writer / multi-reader ring with a spare slot
@@ -82,6 +82,21 @@ status.write(Status(gain=1.2, cam_on=True))
 rs = gb.attach("status", model=Status)   # schema mismatch -> raises on attach
 msg = rs.next(timeout=1.0)               # -> validated Status instance
 ```
+
+Protobuf message classes are also accepted as schemas. They use protobuf's
+native binary serializer without a dict conversion:
+
+```python
+from my_proto_pb2 import Status
+
+status = gb.create(name="status", schema=Status, capacity=4, max_bytes=512)
+status.write(Status(gain=1.2, cam_on=True))
+reader = gb.attach("status", model=Status)
+msg = reader.next(timeout=1.0)
+```
+
+For a protobuf stream, attaching without `model=` returns serialized bytes;
+pass the generated message class to decode directly into a protobuf object.
 
 ### OO consumer
 
@@ -143,10 +158,50 @@ exiting never unlinks the owner's segment.
 ## Build from source
 
 ```bash
-python -m pip install -U pip setuptools wheel Cython numpy msgspec pydantic
+python -m pip install -U pip setuptools wheel Cython numpy msgspec pydantic protobuf
 python setup.py build_ext --inplace
 PYTHONPATH=src python -c "import global_buffer as gb; print(gb.__version__)"
 ```
+
+## Performance and efficiency
+
+The hot path keeps a persistent Cython binding to the shared-memory segment,
+avoiding repeated Python buffer-export setup. Writes also publish the writer
+heartbeat in the same bound operation. The reader continues to use adaptive
+polling, so idle CPU stays low without adding a busy-spin phase.
+
+Run the rate sweep on an otherwise idle machine:
+
+```bash
+PYTHONPATH=src python benchmarks/benchmark_hz.py \
+  --rates 10 30 60 120 200 500 1000 --duration 2
+```
+
+The benchmark reports requested rate, achieved write/read rate, callback
+overruns, combined process CPU percentage, and CPU microseconds per written
+sample. It uses one writer and one callback reader in the same process; use it
+for relative comparisons on the same machine, not as a cross-machine score.
+
+On the Windows CPython 3.14 development machine, a 64-float32 sample sweep
+completed without overruns through 1000 Hz. The optimized path measured about
+0.76 microseconds per write at the median of repeated 20,000-sample runs,
+versus about 0.83 microseconds for the upstream revision; read cost stayed
+near 1.2 microseconds per `latest()` call.
+
+Representative 2-second sweep (`capacity=256`, one callback reader):
+
+| Target | Write rate | Read rate | Overruns | Combined CPU |
+|---:|---:|---:|---:|---:|
+| 10 Hz | 10.0 Hz | 10.0 Hz | 0 | 0.78% |
+| 30 Hz | 30.0 Hz | 30.0 Hz | 0 | 1.56% |
+| 60 Hz | 60.5 Hz | 60.0 Hz | 0 | 3.15% |
+| 120 Hz | 120.0 Hz | 120.0 Hz | 0 | 2.34% |
+| 200 Hz | 200.5 Hz | 200.0 Hz | 0 | 2.35% |
+| 500 Hz | 499.8 Hz | 499.8 Hz | 0 | 2.34% |
+| 1000 Hz | 1000.4 Hz | 999.9 Hz | 0 | 9.38% |
+
+These numbers are machine- and scheduler-dependent; rerun the command above
+for production hardware and payload sizes.
 
 ## Run the tests
 

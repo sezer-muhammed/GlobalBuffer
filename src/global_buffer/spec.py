@@ -39,8 +39,21 @@ def _is_pydantic_model(obj):
     return isinstance(obj, type) and issubclass(obj, pydantic.BaseModel)
 
 
+def _is_protobuf_model(obj):
+    """Return whether *obj* is a generated protobuf message class."""
+    try:
+        from google.protobuf.message import Message
+    except ImportError:
+        return False
+    return isinstance(obj, type) and issubclass(obj, Message)
+
+
 def model_schema_bytes(model):
-    """Canonical, stable JSON-schema bytes for a pydantic model."""
+    """Canonical identity bytes for a Pydantic or protobuf schema."""
+    if _is_protobuf_model(model):
+        descriptor = model.DESCRIPTOR
+        return (descriptor.file.serialized_pb + b"\0" +
+                descriptor.full_name.encode("utf-8"))
     return json.dumps(model.model_json_schema(), sort_keys=True,
                       separators=(",", ":")).encode("utf-8")
 
@@ -60,8 +73,18 @@ def normalize_schema(schema):
             "schema_json": raw,
             "schema_hash": layout.schema_hash(raw),
             "model": schema,
+            "codec": layout.MSG_CODEC_MSGPACK,
+        }
+    if _is_protobuf_model(schema):
+        raw = model_schema_bytes(schema)
+        return layout.KIND_MSG, {
+            "schema_json": raw,
+            "schema_hash": layout.schema_hash(raw),
+            "model": schema,
+            "codec": layout.MSG_CODEC_PROTOBUF,
         }
     raise TypeError(
-        "schema must be a gb.ArraySpec or a pydantic.BaseModel subclass, "
+        "schema must be a gb.ArraySpec, pydantic model, or protobuf message "
+        "class, "
         f"got {schema!r}"
     )
