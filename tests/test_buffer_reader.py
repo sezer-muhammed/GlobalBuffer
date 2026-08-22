@@ -110,6 +110,33 @@ def test_next_timeout_raises_empty(tmp_name):
     w.unlink()
 
 
+def test_next_into_reuses_destination(tmp_name):
+    w = gb.create(name=tmp_name, schema=gb.ArraySpec("int32", (2,)), capacity=4)
+    r = gb.attach(tmp_name)
+    w.write(np.array([4, 5], dtype=np.int32))
+    out = np.empty(2, dtype=np.int32)
+    assert r.next_into(out, timeout=0.5) == 0
+    assert out.tolist() == [4, 5]
+    r.close()
+    w.close()
+    w.unlink()
+
+
+def test_next_batch_into_drains_without_per_sample_allocations(tmp_name):
+    w = gb.create(name=tmp_name, schema=gb.ArraySpec("int32", (2,)), capacity=8)
+    r = gb.attach(tmp_name)
+    for i in range(3):
+        w.write(np.array([i, i + 10], dtype=np.int32))
+    out = np.empty((2, 2), dtype=np.int32)
+    assert r.next_batch_into(out, timeout=0.5) == 2
+    assert out.tolist() == [[0, 10], [1, 11]]
+    assert r.next_batch_into(out, timeout=0.5) == 1
+    assert out[0].tolist() == [2, 12]
+    r.close()
+    w.close()
+    w.unlink()
+
+
 def test_message_reader_validates(tmp_name):
     class M(pydantic.BaseModel):
         gain: float

@@ -114,6 +114,29 @@ class Reader(_ShmHandle):
             return np.frombuffer(payload, dtype=self._dtype).reshape(self._shape)
         return self._codec.decode(payload)
 
+    def _validate_array_destination(self, out, batch=False):
+        if self.kind != layout.KIND_ARRAY:
+            raise TypeError("destination APIs are only valid for array buffers")
+        if not isinstance(out, np.ndarray):
+            raise TypeError("destination must be a numpy.ndarray")
+        if out.dtype != self._dtype:
+            raise ValueError(f"dtype {out.dtype} != declared {self._dtype}")
+        expected = ((out.shape[0],) + self._shape) if batch else self._shape
+        if out.shape != expected:
+            raise ValueError(f"shape {out.shape} != declared {expected}")
+        if not out.flags.c_contiguous or not out.flags.writeable:
+            raise ValueError("destination must be writable and C-contiguous")
+
+    def _bind_array_destination(self, out):
+        current = getattr(self, "_into_output_obj", None)
+        if current is not out:
+            old = getattr(self, "_into_bound", None)
+            if old is not None:
+                old.close()
+            self._into_output_obj = out
+            self._into_bound = _core.bind_output(out)
+        return self._into_bound
+
     def _read_latest_raw(self):
         res = self._bound.read_latest()
         if res is None:
@@ -129,6 +152,75 @@ class Reader(_ShmHandle):
         self.overruns += overruns
         self._cursor = new_cursor
         return self._decode(payload), seq
+
+    def next_into(self, out, timeout=None):
+        """Copy the next array sample into ``out`` without allocating bytes.
+
+        Returns the sample sequence number. ``out`` is reused by the caller,
+        so this API is suitable for allocation-free high-rate consumers.
+        """
+        self._check()
+        self._validate_array_destination(out)
+        destination = self._bind_array_destination(out)
+        deadline = None if timeout is None else time.monotonic() + timeout
+        get_count = self._bound.latest_count
+        while True:
+            res = self._bound.read_next_into_bound(destination, self._cursor)
+            if res is not None:
+                seq, new_cursor, overruns = res
+                self.overruns += overruns
+                self._cursor = new_cursor
+                return seq
+            if deadline is None:
+                wait_for_count(get_count, self._cursor, timeout=0.2,
+                               min_interval=self._poll_min,
+                               max_interval=self._poll_max)
+                continue
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise Empty(f"no sample within {timeout}s")
+            wait_for_count(get_count, self._cursor, timeout=remaining,
+                           min_interval=self._poll_min,
+                           max_interval=self._poll_max)
+
+    def next_batch_into(self, out, timeout=None):
+        """Drain available array samples into a 2-D-or-higher output array.
+
+        ``out.shape`` must be ``(batch_size,) + reader.shape``. Returns the
+        number of samples copied and reuses the caller-owned storage.
+        """
+        self._check()
+        if not isinstance(out, np.ndarray) or out.ndim < 1:
+            raise TypeError("destination must be a numpy.ndarray with a batch axis")
+        if out.shape[0] < 1:
+            raise ValueError("destination batch size must be positive")
+        self._validate_array_destination(out, batch=True)
+        destination = self._bind_array_destination(out)
+        deadline = None if timeout is None else time.monotonic() + timeout
+        get_count = self._bound.latest_count
+        item_size = self._dtype.itemsize
+        for dim in self._shape:
+            item_size *= dim
+        while True:
+            res = self._bound.read_next_batch_into_bound(
+                destination, self._cursor, item_size, out.shape[0]
+            )
+            if res is not None:
+                count, new_cursor, overruns = res
+                self.overruns += overruns
+                self._cursor = new_cursor
+                return count
+            if deadline is None:
+                wait_for_count(get_count, self._cursor, timeout=0.2,
+                               min_interval=self._poll_min,
+                               max_interval=self._poll_max)
+                continue
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise Empty(f"no sample within {timeout}s")
+            wait_for_count(get_count, self._cursor, timeout=remaining,
+                           min_interval=self._poll_min,
+                           max_interval=self._poll_max)
 
     # ---- public read API ----
     def latest(self):

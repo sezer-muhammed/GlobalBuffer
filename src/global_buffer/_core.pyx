@@ -153,6 +153,85 @@ cdef object _read_next_cached(unsigned char* base, uint64_t n_slots,
     return None
 
 
+cdef int _read_one_into_cached(unsigned char* base, uint64_t n_slots,
+                               uint64_t payload_off, uint64_t slots_off,
+                               uint64_t stride, uint64_t cursor,
+                               unsigned char* dst, uint64_t dst_size,
+                               uint64_t* out_seq, uint64_t* out_cursor,
+                               uint64_t* out_overruns) noexcept nogil:
+    """Copy one sample into caller-owned storage without allocating bytes.
+
+    Return 1 for a sample, 0 for no sample/unstable slot, and -1 when the
+    destination is too small.  The function is nogil so a batch reader can
+    drain several samples without reacquiring the interpreter lock per copy.
+    """
+    cdef uint64_t count, capacity, oldest, seq, idx
+    cdef uint64_t overruns = 0
+    cdef Py_ssize_t soff
+    cdef uint32_t l1, l2, length
+    cdef int tries
+    count = gb_load_u64(base + O_LATEST_COUNT)
+    if cursor >= count:
+        return 0
+    capacity = n_slots - 1
+    if count > capacity and cursor < count - capacity:
+        oldest = count - capacity
+        overruns = oldest - cursor
+        cursor = oldest
+    seq = cursor
+    for tries in range(64):
+        idx = seq % n_slots
+        soff = <Py_ssize_t>(slots_off + idx * stride)
+        l1 = gb_load_u32(base + soff + S_LOCK)
+        if l1 & 1:
+            continue
+        length = gb_load_u32(base + soff + S_LENGTH)
+        if <uint64_t>length > dst_size:
+            return -1
+        gb_memcpy(dst, base + soff + payload_off, length)
+        l2 = gb_load_u32(base + soff + S_LOCK)
+        if l1 == l2 and gb_load_u64(base + soff + S_SEQ) == seq:
+            out_seq[0] = seq
+            out_cursor[0] = seq + 1
+            out_overruns[0] = overruns
+            return 1
+    return 0
+
+
+cdef class BoundOutput:
+    """Persistent writable view for allocation-free destination reads."""
+    cdef Py_buffer _view
+    cdef unsigned char* _base_ptr
+    cdef Py_ssize_t _length
+    cdef bint _held
+
+    def __cinit__(self, object out):
+        self._held = False
+        self._base_ptr = NULL
+        self._length = 0
+        if PyObject_GetBuffer(out, &self._view,
+                              PyBUF_WRITABLE | PyBUF_SIMPLE) != 0:
+            raise BufferError("destination is not writable / contiguous")
+        self._held = True
+        self._base_ptr = <unsigned char*>self._view.buf
+        self._length = self._view.len
+
+    cdef inline void _check(self) except *:
+        if not self._held:
+            raise BufferError("bound destination is closed")
+
+    def close(self):
+        if self._held:
+            PyBuffer_Release(&self._view)
+            self._held = False
+            self._base_ptr = NULL
+            self._length = 0
+
+    def __dealloc__(self):
+        if self._held:
+            PyBuffer_Release(&self._view)
+
+
 cdef class BoundBuffer:
     """Persistent read-only view of one shared-memory segment.
 
@@ -261,6 +340,118 @@ cdef class BoundBuffer:
                                  self._payload_off, self._slots_off,
                                  self._stride, cursor)
 
+    def read_next_into(self, object out, uint64_t cursor):
+        """Copy one array sample into caller-owned contiguous storage."""
+        cdef Py_buffer dview
+        cdef int status
+        cdef uint64_t seq, new_cursor, overruns
+        self._check()
+        if PyObject_GetBuffer(out, &dview,
+                              PyBUF_WRITABLE | PyBUF_SIMPLE) != 0:
+            raise BufferError("destination is not writable / contiguous")
+        try:
+            with nogil:
+                status = _read_one_into_cached(
+                    self._base_ptr, self._n_slots, self._payload_off,
+                    self._slots_off, self._stride, cursor,
+                    <unsigned char*>dview.buf, <uint64_t>dview.len,
+                    &seq, &new_cursor, &overruns)
+            if status < 0:
+                raise ValueError("destination is smaller than the sample")
+            if status == 0:
+                return None
+            return (seq, new_cursor, overruns)
+        finally:
+            PyBuffer_Release(&dview)
+
+    def read_next_into_bound(self, BoundOutput out, uint64_t cursor):
+        """Copy one sample into a persistent bound destination."""
+        cdef int status
+        cdef uint64_t seq, new_cursor, overruns
+        self._check()
+        out._check()
+        with nogil:
+            status = _read_one_into_cached(
+                self._base_ptr, self._n_slots, self._payload_off,
+                self._slots_off, self._stride, cursor,
+                out._base_ptr, <uint64_t>out._length,
+                &seq, &new_cursor, &overruns)
+        if status < 0:
+            raise ValueError("destination is smaller than the sample")
+        if status == 0:
+            return None
+        return (seq, new_cursor, overruns)
+
+    def read_next_batch_into(self, object out, uint64_t cursor,
+                             uint64_t item_size, uint64_t max_items):
+        """Drain up to ``max_items`` fixed-size samples into one array."""
+        cdef Py_buffer dview
+        cdef uint64_t i = 0
+        cdef uint64_t cur = cursor
+        cdef uint64_t seq, new_cursor, overruns
+        cdef uint64_t total_overruns = 0
+        cdef int status
+        self._check()
+        if max_items == 0 or item_size == 0:
+            raise ValueError("max_items and item_size must be positive")
+        if PyObject_GetBuffer(out, &dview,
+                              PyBUF_WRITABLE | PyBUF_SIMPLE) != 0:
+            raise BufferError("destination is not writable / contiguous")
+        try:
+            if <uint64_t>dview.len < item_size * max_items:
+                raise ValueError("destination is smaller than max_items samples")
+            with nogil:
+                while i < max_items:
+                    status = _read_one_into_cached(
+                        self._base_ptr, self._n_slots, self._payload_off,
+                        self._slots_off, self._stride, cur,
+                        (<unsigned char*>dview.buf) + i * item_size,
+                        item_size, &seq, &new_cursor, &overruns)
+                    if status != 1:
+                        break
+                    cur = new_cursor
+                    total_overruns += overruns
+                    i += 1
+            if status < 0:
+                raise ValueError("destination item is smaller than the sample")
+            if i == 0:
+                return None
+            return (i, cur, total_overruns)
+        finally:
+            PyBuffer_Release(&dview)
+
+    def read_next_batch_into_bound(self, BoundOutput out, uint64_t cursor,
+                                   uint64_t item_size, uint64_t max_items):
+        """Drain into one persistent bound destination."""
+        cdef uint64_t i = 0
+        cdef uint64_t cur = cursor
+        cdef uint64_t seq, new_cursor, overruns
+        cdef uint64_t total_overruns = 0
+        cdef int status = 0
+        self._check()
+        out._check()
+        if max_items == 0 or item_size == 0:
+            raise ValueError("max_items and item_size must be positive")
+        if <uint64_t>out._length < item_size * max_items:
+            raise ValueError("destination is smaller than max_items samples")
+        with nogil:
+            while i < max_items:
+                status = _read_one_into_cached(
+                    self._base_ptr, self._n_slots, self._payload_off,
+                    self._slots_off, self._stride, cur,
+                    out._base_ptr + i * item_size, item_size,
+                    &seq, &new_cursor, &overruns)
+                if status != 1:
+                    break
+                cur = new_cursor
+                total_overruns += overruns
+                i += 1
+        if status < 0:
+            raise ValueError("destination item is smaller than the sample")
+        if i == 0:
+            return None
+        return (i, cur, total_overruns)
+
     def latest_count(self):
         self._check()
         return gb_load_u64(self._base_ptr + O_LATEST_COUNT)
@@ -276,6 +467,10 @@ cdef class BoundBuffer:
 
 def bind(object buf):
     return BoundBuffer(buf)
+
+
+def bind_output(object out):
+    return BoundOutput(out)
 
 
 def commit_copy(object buf, object src, Py_ssize_t length):

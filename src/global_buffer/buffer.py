@@ -72,6 +72,9 @@ class _ShmHandle:
         if self._closed:
             return
         self._closed = True
+        into_bound = getattr(self, "_into_bound", None)
+        if into_bound is not None:
+            into_bound.close()
         bound = getattr(self, "_bound", None)
         if bound is not None:
             bound.close()
@@ -92,11 +95,15 @@ class GlobalBuffer(_ShmHandle):
 
     _role = "buffer"
 
-    def __init__(self, name, schema, capacity, max_bytes=None):
+    def __init__(self, name, schema, capacity, max_bytes=None,
+                 heartbeat_interval=0.1):
         if capacity < 1:
             raise ValueError("capacity must be >= 1")
+        if heartbeat_interval < 0:
+            raise ValueError("heartbeat_interval must be >= 0")
         self.name = name
         self._closed = False
+        self._heartbeat_interval_ns = int(heartbeat_interval * 1e9)
 
         kind, info = normalize_schema(schema)
         self.kind = kind
@@ -136,7 +143,20 @@ class GlobalBuffer(_ShmHandle):
         self._geo = g
         self._bound = _core.bind(buf)
         layout.write_writer_pid(buf, os.getpid())
-        self._bound.set_writer_heartbeat(time.time_ns())
+        self._last_heartbeat_check_ns = time.monotonic_ns()
+        self._last_heartbeat_ns = time.time_ns()
+        self._bound.set_writer_heartbeat(self._last_heartbeat_ns)
+
+    def _heartbeat_value(self):
+        """Return a heartbeat only when the configured liveness interval elapses."""
+        now_mono = time.monotonic_ns()
+        if (self._heartbeat_interval_ns == 0 or
+                now_mono - self._last_heartbeat_check_ns >=
+                self._heartbeat_interval_ns):
+            self._last_heartbeat_check_ns = now_mono
+            self._last_heartbeat_ns = time.time_ns()
+            return self._last_heartbeat_ns
+        return 0
 
     # ---- writes ----
     def write(self, data):
@@ -146,14 +166,14 @@ class GlobalBuffer(_ShmHandle):
             arr = np.ascontiguousarray(data, dtype=self._dtype)
             if arr.shape != self._shape:
                 raise ValueError(f"shape {arr.shape} != declared {self._shape}")
-            self._bound.commit_copy(arr, arr.nbytes, time.time_ns())
+            self._bound.commit_copy(arr, arr.nbytes, self._heartbeat_value())
         else:
             blob = self._codec.encode(data)
             if len(blob) > self._slot_size:
                 raise ValueError(
                     f"encoded message {len(blob)}B exceeds max_bytes "
                     f"{self._slot_size}")
-            self._bound.commit_copy(blob, len(blob), time.time_ns())
+            self._bound.commit_copy(blob, len(blob), self._heartbeat_value())
 
     @contextmanager
     def reserve(self):
@@ -170,11 +190,14 @@ class GlobalBuffer(_ShmHandle):
         try:
             yield view
         finally:
-            self._bound.reserve_commit(idx, self._spec.nbytes, time.time_ns())
+            self._bound.reserve_commit(idx, self._spec.nbytes,
+                                       self._heartbeat_value())
 
     # ---- liveness ----
     def heartbeat(self):
-        self._bound.set_writer_heartbeat(time.time_ns())
+        self._last_heartbeat_check_ns = time.monotonic_ns()
+        self._last_heartbeat_ns = time.time_ns()
+        self._bound.set_writer_heartbeat(self._last_heartbeat_ns)
 
     # ---- lifecycle ----
     def unlink(self):
