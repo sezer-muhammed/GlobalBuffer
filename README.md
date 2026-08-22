@@ -17,7 +17,7 @@ lock-free Cython hot path.
 
 ## Status
 
-**v1.0.2.** Core is stable and covered by 70 tests (including a cross-process
+**v1.1.0.** Core is stable and covered by 76 tests (including a cross-process
 no-torn-reads stress test), verified on macOS / CPython 3.14. Linux, Windows and
 aarch64 (Jetson) are supported and wheels are configured, with broad CI
 verification on those platforms in progress. See [`CHANGELOG.md`](CHANGELOG.md)
@@ -120,8 +120,8 @@ ob.stop()
   `gb.Empty` on timeout; without a timeout it blocks.
 - `next()` accumulates `reader.overruns` when the writer laps the reader by more
   than `capacity` samples (the reader then jumps to the oldest still-available sample).
-- `reader.writer_alive` reflects a heartbeat the writer stamps on every write
-  (a writer silent for >2 s reads as not alive).
+- `reader.writer_alive` reflects the writer heartbeat (automatic stamps default
+  to every 100 ms; a writer silent for >2 s reads as not alive).
 
 ## Lifecycle
 

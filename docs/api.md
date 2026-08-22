@@ -27,7 +27,7 @@ Declares an array stream. Properties: `np_dtype`, `itemsize`, `nbytes`.
 ## `gb.GlobalBuffer` (writer)
 - `write(data)` — publish one sample (numpy array, or model/dict for messages).
 - `reserve()` — context manager yielding a zero-copy ndarray view (array buffers).
-- `heartbeat()` — stamp liveness (also done automatically on every write).
+- `heartbeat()` — stamp liveness; automatic stamps follow `heartbeat_interval`.
 - `close()` / `unlink()` — detach / remove the segment.
 - Usable as a context manager (`with gb.create(...) as w:`).
 

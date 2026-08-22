@@ -4,7 +4,7 @@
 
 - **`_core` (Cython + C11 atomics)** — segment layout math, the per-slot seqlock,
   the commit counter, slot memcpy. No Python on the hot path.
-- **Python layer** — schema handling, the pydantic↔msgspec bridge, lifecycle and
+- **Python layer** — schema handling, the pydantic/msgspec and protobuf bridges, lifecycle and
   the adaptive-poll wakeup.
 
 ## Memory layout
