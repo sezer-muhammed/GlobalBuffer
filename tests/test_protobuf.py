@@ -20,7 +20,9 @@ def make_message_class(file_name="status.proto", field_name="gain"):
         label=descriptor_pb2.FieldDescriptorProto.LABEL_OPTIONAL,
         type=descriptor_pb2.FieldDescriptorProto.TYPE_FLOAT,
     )
-    descriptor = descriptor_pool.DescriptorPool().Add(fd)
+    pool = descriptor_pool.DescriptorPool()
+    pool.Add(fd)
+    descriptor = pool.FindFileByName(file_name)
     return message_factory.GetMessageClass(
         descriptor.message_types_by_name["Status"]
     )

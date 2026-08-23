@@ -4,6 +4,12 @@ All notable changes to GlobalBuffer are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/);
 this project uses semantic versioning.
 
+## 1.1.3 — 2026-08-22
+
+### Fixed
+- Keep the protobuf test fixture compatible with current protobuf releases,
+  where `DescriptorPool.Add()` no longer returns the file descriptor.
+
 ## 1.1.2 — 2026-08-22
 
 ### Fixed
