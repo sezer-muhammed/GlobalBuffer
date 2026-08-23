@@ -24,7 +24,7 @@ classifiers = [
   "Intended Audience :: Developers",
   "Intended Audience :: Science/Research",
 ]
-dependencies = ["numpy>=1.23", "msgspec>=0.18", "pydantic>=2", "protobuf>=4.21"]
+dependencies = ["numpy>=1.23,<2.5", "msgspec>=0.18", "pydantic>=2", "protobuf>=4.21"]
 
 [project.urls]
 Homepage = "https://github.com/sezer-muhammed/GlobalBuffer"
