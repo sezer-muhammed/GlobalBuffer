@@ -4,6 +4,12 @@ All notable changes to GlobalBuffer are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/);
 this project uses semantic versioning.
 
+## 1.1.1 — 2026-08-22
+
+### Fixed
+- Pin the isolated build-time NumPy dependency below 2.5 so manylinux2014
+  wheels do not fall back to a NumPy source build requiring GCC 10.3.
+
 ## 1.1.0 — 2026-08-22
 
 ### Added

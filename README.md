@@ -17,7 +17,7 @@ lock-free Cython hot path.
 
 ## Status
 
-**v1.1.0.** Core is stable and covered by 76 tests (including a cross-process
+**v1.1.1.** Core is stable and covered by 76 tests (including a cross-process
 no-torn-reads stress test), verified on macOS / CPython 3.14. Linux, Windows and
 aarch64 (Jetson) are supported and wheels are configured, with broad CI
 verification on those platforms in progress. See [`CHANGELOG.md`](CHANGELOG.md)
