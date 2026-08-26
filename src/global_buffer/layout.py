@@ -5,6 +5,8 @@ MAGIC = 0x46554247          # b"GBUF" little-endian
 VERSION = 1
 KIND_ARRAY = 1
 KIND_MSG = 2
+MSG_CODEC_MSGPACK = 1
+MSG_CODEC_PROTOBUF = 2
 NDIM_MAX = 8
 MAX_READERS = 64
 HEADER_SIZE = 4096
@@ -28,6 +30,7 @@ O_REGISTRY_OFF = 64
 O_SLOTS_OFF = 72
 O_SCHEMA_HASH = 80
 O_SCHEMA_JSON_LEN = 88
+O_MSG_CODEC = 92          # 0 on v1 segments means msgpack (legacy)
 O_DTYPE = 128            # char[16]
 O_NDIM = 144
 O_SHAPE = 152            # u64[NDIM_MAX]
@@ -101,9 +104,11 @@ def write_array_header(buf, n_slots, slot_size, dtype, shape):
         struct.pack_into("<Q", buf, O_SHAPE + 8 * i, int(d))
 
 
-def write_msg_header(buf, n_slots, slot_size, schema_json, schema_hash):
+def write_msg_header(buf, n_slots, slot_size, schema_json, schema_hash,
+                     codec=MSG_CODEC_MSGPACK):
     _write_common(buf, KIND_MSG, n_slots, slot_size)
     struct.pack_into("<Q", buf, O_SCHEMA_HASH, schema_hash)
+    struct.pack_into("<I", buf, O_MSG_CODEC, codec)
     if len(schema_json) > HEADER_SIZE - O_SCHEMA_JSON:
         raise ValueError("schema_json too large for header")
     struct.pack_into("<I", buf, O_SCHEMA_JSON_LEN, len(schema_json))
@@ -139,4 +144,6 @@ def read_header(buf):
     elif kind == KIND_MSG:
         n = struct.unpack_from("<I", buf, O_SCHEMA_JSON_LEN)[0]
         h["schema_json"] = bytes(buf[O_SCHEMA_JSON:O_SCHEMA_JSON + n])
+        codec = struct.unpack_from("<I", buf, O_MSG_CODEC)[0]
+        h["msg_codec"] = codec or MSG_CODEC_MSGPACK
     return h

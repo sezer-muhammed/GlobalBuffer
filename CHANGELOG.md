@@ -4,6 +4,42 @@ All notable changes to GlobalBuffer are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/);
 this project uses semantic versioning.
 
+## 1.1.3 — 2026-08-22
+
+### Fixed
+- Keep the protobuf test fixture compatible with current protobuf releases,
+  where `DescriptorPool.Add()` no longer returns the file descriptor.
+
+## 1.1.2 — 2026-08-22
+
+### Fixed
+- Constrain the runtime NumPy dependency below 2.5 as well as the isolated
+  build dependency, so manylinux2014 wheel installation does not trigger a
+  NumPy source build requiring GCC 10.3.
+
+## 1.1.1 — 2026-08-22
+
+### Fixed
+- Pin the isolated build-time NumPy dependency below 2.5 so manylinux2014
+  wheels do not fall back to a NumPy source build requiring GCC 10.3.
+
+## 1.1.0 — 2026-08-22
+
+### Added
+- Protobuf message classes as schemas, with native protobuf binary encoding,
+  decoding, and descriptor-based schema compatibility checks.
+- Allocation-free array reads through `Reader.next_into()` and batched reads
+  through `Reader.next_batch_into()`.
+- Multi-rate payload and CPU-efficiency benchmark tooling, including 32 KiB
+  `int8` payload tests.
+
+### Changed
+- Persistent Cython shared-memory bindings remove repeated buffer-export setup
+  from the writer and reader hot paths.
+- Automatic writer heartbeats are throttled to 100 ms by default; pass
+  `heartbeat_interval=0` to stamp every write.
+- Added protobuf to runtime dependencies and expanded release documentation.
+
 ## 1.0.2 — 2026-06-03
 
 ### Fixed

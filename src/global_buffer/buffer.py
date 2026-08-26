@@ -72,6 +72,12 @@ class _ShmHandle:
         if self._closed:
             return
         self._closed = True
+        into_bound = getattr(self, "_into_bound", None)
+        if into_bound is not None:
+            into_bound.close()
+        bound = getattr(self, "_bound", None)
+        if bound is not None:
+            bound.close()
         self._shm.close()
 
     def __enter__(self):
@@ -89,11 +95,15 @@ class GlobalBuffer(_ShmHandle):
 
     _role = "buffer"
 
-    def __init__(self, name, schema, capacity, max_bytes=None):
+    def __init__(self, name, schema, capacity, max_bytes=None,
+                 heartbeat_interval=0.1):
         if capacity < 1:
             raise ValueError("capacity must be >= 1")
+        if heartbeat_interval < 0:
+            raise ValueError("heartbeat_interval must be >= 0")
         self.name = name
         self._closed = False
+        self._heartbeat_interval_ns = int(heartbeat_interval * 1e9)
 
         kind, info = normalize_schema(schema)
         self.kind = kind
@@ -108,7 +118,8 @@ class GlobalBuffer(_ShmHandle):
         else:
             self._model = info["model"]
             slot_size = max_bytes or 4096
-            self._codec = MessageCodec(info["model"], validate=True)
+            self._codec = MessageCodec(info["model"], validate=True,
+                                       codec=info["codec"])
             self._schema_json = info["schema_json"]
             self._schema_hash = info["schema_hash"]
 
@@ -125,12 +136,27 @@ class GlobalBuffer(_ShmHandle):
         else:
             layout.write_msg_header(buf, n_slots=n_slots, slot_size=slot_size,
                                     schema_json=self._schema_json,
-                                    schema_hash=self._schema_hash)
+                                    schema_hash=self._schema_hash,
+                                    codec=info["codec"])
         self._n_slots = n_slots
         self._slot_size = slot_size
         self._geo = g
+        self._bound = _core.bind(buf)
         layout.write_writer_pid(buf, os.getpid())
-        self.heartbeat()
+        self._last_heartbeat_check_ns = time.monotonic_ns()
+        self._last_heartbeat_ns = time.time_ns()
+        self._bound.set_writer_heartbeat(self._last_heartbeat_ns)
+
+    def _heartbeat_value(self):
+        """Return a heartbeat only when the configured liveness interval elapses."""
+        now_mono = time.monotonic_ns()
+        if (self._heartbeat_interval_ns == 0 or
+                now_mono - self._last_heartbeat_check_ns >=
+                self._heartbeat_interval_ns):
+            self._last_heartbeat_check_ns = now_mono
+            self._last_heartbeat_ns = time.time_ns()
+            return self._last_heartbeat_ns
+        return 0
 
     # ---- writes ----
     def write(self, data):
@@ -140,15 +166,14 @@ class GlobalBuffer(_ShmHandle):
             arr = np.ascontiguousarray(data, dtype=self._dtype)
             if arr.shape != self._shape:
                 raise ValueError(f"shape {arr.shape} != declared {self._shape}")
-            _core.commit_copy(self._shm.buf, arr, arr.nbytes)
+            self._bound.commit_copy(arr, arr.nbytes, self._heartbeat_value())
         else:
             blob = self._codec.encode(data)
             if len(blob) > self._slot_size:
                 raise ValueError(
                     f"encoded message {len(blob)}B exceeds max_bytes "
                     f"{self._slot_size}")
-            _core.commit_copy(self._shm.buf, blob, len(blob))
-        self.heartbeat()
+            self._bound.commit_copy(blob, len(blob), self._heartbeat_value())
 
     @contextmanager
     def reserve(self):
@@ -159,18 +184,20 @@ class GlobalBuffer(_ShmHandle):
         self._check()
         if self.kind != layout.KIND_ARRAY:
             raise TypeError("reserve() is only valid for array buffers")
-        idx, payload_off = _core.reserve_begin(self._shm.buf)
+        idx, payload_off = self._bound.reserve_begin()
         view = np.ndarray(self._shape, dtype=self._dtype,
                           buffer=self._shm.buf, offset=payload_off)
         try:
             yield view
         finally:
-            _core.reserve_commit(self._shm.buf, idx, self._spec.nbytes)
-            self.heartbeat()
+            self._bound.reserve_commit(idx, self._spec.nbytes,
+                                       self._heartbeat_value())
 
     # ---- liveness ----
     def heartbeat(self):
-        _core.set_writer_heartbeat(self._shm.buf, time.time_ns())
+        self._last_heartbeat_check_ns = time.monotonic_ns()
+        self._last_heartbeat_ns = time.time_ns()
+        self._bound.set_writer_heartbeat(self._last_heartbeat_ns)
 
     # ---- lifecycle ----
     def unlink(self):

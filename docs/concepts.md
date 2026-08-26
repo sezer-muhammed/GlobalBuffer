@@ -29,7 +29,8 @@ time** — so a reader should usually be up before the writes it cares about.
 
 ## Liveness
 
-The writer stamps a monotonic heartbeat on every write. `reader.writer_alive`
+The writer stamps a wall-clock heartbeat at the configured interval (100 ms by
+default). `reader.writer_alive`
 is `False` if no heartbeat has landed for >2 s, so readers can detect a dead or
 stalled writer.
 

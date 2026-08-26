@@ -17,7 +17,7 @@ lock-free Cython hot path.
 
 ## Status
 
-**v1.0.2.** Core is stable and covered by 70 tests (including a cross-process
+**v1.1.3.** Core is stable and covered by 76 tests (including a cross-process
 no-torn-reads stress test), verified on macOS / CPython 3.14. Linux, Windows and
 aarch64 (Jetson) are supported and wheels are configured, with broad CI
 verification on those platforms in progress. See [`CHANGELOG.md`](CHANGELOG.md)
@@ -27,7 +27,7 @@ for known limitations.
 
 - **Two stream kinds, one API**
   - **Array streams** — fixed dtype + shape numpy data, written and read **zero-copy**.
-  - **Message streams** — `pydantic` models on the public API, `msgspec` (msgpack) on the wire (~10× faster than pickle).
+  - **Message streams** — `pydantic` models use `msgspec` (msgpack), while protobuf schemas use native protobuf serialization on the wire.
 - **Last-value or in-order reads** — `latest()` jumps to the newest sample;
   `next()` consumes every sample in order and reports `overruns` if a reader falls behind.
 - **Lock-free, tear-free** — single-writer / multi-reader ring with a spare slot
@@ -83,6 +83,21 @@ rs = gb.attach("status", model=Status)   # schema mismatch -> raises on attach
 msg = rs.next(timeout=1.0)               # -> validated Status instance
 ```
 
+Protobuf message classes are also accepted as schemas. They use protobuf's
+native binary serializer without a dict conversion:
+
+```python
+from my_proto_pb2 import Status
+
+status = gb.create(name="status", schema=Status, capacity=4, max_bytes=512)
+status.write(Status(gain=1.2, cam_on=True))
+reader = gb.attach("status", model=Status)
+msg = reader.next(timeout=1.0)
+```
+
+For a protobuf stream, attaching without `model=` returns serialized bytes;
+pass the generated message class to decode directly into a protobuf object.
+
 ### OO consumer
 
 ```python
@@ -105,8 +120,8 @@ ob.stop()
   `gb.Empty` on timeout; without a timeout it blocks.
 - `next()` accumulates `reader.overruns` when the writer laps the reader by more
   than `capacity` samples (the reader then jumps to the oldest still-available sample).
-- `reader.writer_alive` reflects a heartbeat the writer stamps on every write
-  (a writer silent for >2 s reads as not alive).
+- `reader.writer_alive` reflects the writer heartbeat (automatic stamps default
+  to every 100 ms; a writer silent for >2 s reads as not alive).
 
 ## Lifecycle
 
@@ -143,10 +158,90 @@ exiting never unlinks the owner's segment.
 ## Build from source
 
 ```bash
-python -m pip install -U pip setuptools wheel Cython numpy msgspec pydantic
+python -m pip install -U pip setuptools wheel Cython numpy msgspec pydantic protobuf
 python setup.py build_ext --inplace
 PYTHONPATH=src python -c "import global_buffer as gb; print(gb.__version__)"
 ```
+
+## Performance and efficiency
+
+The hot path keeps a persistent Cython binding to the shared-memory segment,
+avoiding repeated Python buffer-export setup. Writes also publish the writer
+heartbeat in the same bound operation. For high-rate array consumers,
+`next_into()` reuses caller-owned numpy storage and `next_batch_into()` drains
+multiple samples without allocating a `bytes` object per sample. The reader
+continues to use adaptive polling, so idle CPU stays low without adding a
+busy-spin phase.
+
+Run the rate sweep on an otherwise idle machine:
+
+```bash
+PYTHONPATH=src python benchmarks/benchmark_hz.py \
+  --rates 10 30 60 120 200 500 1000 --duration 2
+```
+
+For a 32 KiB `int8` payload, use 32,768 elements:
+
+```bash
+PYTHONPATH=src python benchmarks/benchmark_hz.py \
+  --dtype int8 --elements 32768 \
+  --rates 10 30 60 120 200 500 1000 --duration 2
+```
+
+The benchmark reports requested rate, achieved write/read rate, callback
+overruns, combined process CPU percentage, and CPU microseconds per written
+sample. It uses one writer and one callback reader in the same process; use it
+for relative comparisons on the same machine, not as a cross-machine score.
+
+On the Windows CPython 3.14 development machine, a 64-float32 sample sweep
+completed without overruns through 1000 Hz. The optimized path measured about
+0.76 microseconds per write at the median of repeated 20,000-sample runs,
+versus about 0.83 microseconds for the upstream revision; read cost stayed
+near 1.2 microseconds per `latest()` call.
+
+Representative 2-second sweep (`capacity=256`, one callback reader):
+
+| Target | Write rate | Read rate | Overruns | Combined CPU |
+|---:|---:|---:|---:|---:|
+| 10 Hz | 10.0 Hz | 10.0 Hz | 0 | 0.78% |
+| 30 Hz | 30.0 Hz | 30.0 Hz | 0 | 1.56% |
+| 60 Hz | 60.5 Hz | 60.0 Hz | 0 | 3.15% |
+| 120 Hz | 120.0 Hz | 120.0 Hz | 0 | 2.34% |
+| 200 Hz | 200.5 Hz | 200.0 Hz | 0 | 2.35% |
+| 500 Hz | 499.8 Hz | 499.8 Hz | 0 | 2.34% |
+| 1000 Hz | 1000.4 Hz | 999.9 Hz | 0 | 9.38% |
+
+These numbers are machine- and scheduler-dependent; rerun the command above
+for production hardware and payload sizes.
+
+32 KiB `int8` sweep on the same machine:
+
+| Target | Write rate | Read rate | Overruns | Combined CPU |
+|---:|---:|---:|---:|---:|
+| 10 Hz | 10.0 Hz | 10.0 Hz | 0 | 1.56% |
+| 30 Hz | 30.0 Hz | 30.0 Hz | 0 | 3.12% |
+| 60 Hz | 60.5 Hz | 60.0 Hz | 0 | 0.79% |
+| 120 Hz | 120.0 Hz | 120.0 Hz | 0 | 1.56% |
+| 200 Hz | 200.5 Hz | 200.0 Hz | 0 | 4.70% |
+| 500 Hz | 499.9 Hz | 499.9 Hz | 0 | 8.59% |
+| 1000 Hz | 1000.3 Hz | 999.8 Hz | 0 | 14.07% |
+
+At 1000 Hz this is 32.768 MB/s of payload in each direction; the benchmark
+still delivered 1,999 of 2,000 callbacks with zero ring overruns.
+
+The allocation-free API comparison at 1000 Hz for 5 seconds was:
+
+| Reader API | Delivered | Overruns | Combined CPU |
+|---|---:|---:|---:|
+| `next()` | 4,999 / 5,000 | 0 | 12.50% |
+| `next_into()` | 5,000 / 5,000 | 0 | 12.81% |
+| `next_batch_into()` | 5,000 / 5,000 | 0 | 13.75% |
+| `latest()` | 4,381 / 5,000 | 0 | 13.13% |
+
+For a paced stream with one sample available per wakeup, the 32 KiB memcpy
+dominates, so `next_into()` mainly removes per-sample allocation and makes
+latency/CPU more predictable. Batch reads help more when the writer publishes
+bursts; `latest()` intentionally skips intermediate frames.
 
 ## Run the tests
 

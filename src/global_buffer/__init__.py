@@ -12,10 +12,13 @@ from .reader import Reader
 from .spec import ArraySpec
 
 
-def create(name, schema, capacity, max_bytes=None):
+def create(name, schema, capacity, max_bytes=None, heartbeat_interval=0.1):
     """Create and own a named buffer (writer). ``schema`` is an
-    :class:`ArraySpec` or a ``pydantic.BaseModel`` subclass."""
-    return GlobalBuffer(name, schema, capacity, max_bytes=max_bytes)
+    :class:`ArraySpec` or a ``pydantic.BaseModel`` subclass. ``heartbeat_interval``
+    controls automatic writer liveness stamps; zero restores a stamp on every
+    write."""
+    return GlobalBuffer(name, schema, capacity, max_bytes=max_bytes,
+                        heartbeat_interval=heartbeat_interval)
 
 
 def attach(name, model=None, poll_min=None, poll_max=None):
